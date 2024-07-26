@@ -1,4 +1,4 @@
-$ cat changedetection.io/docker-compose.yml
+$ cat docker-compose.yml
 services:
   changedetection:
     image: ghcr.io/dgtlmoon/changedetection.io
@@ -10,7 +10,8 @@ services:
             #- WEBDRIVER_URL=http://browser-chrome:4444/wd/hub  # Moved here from volumes section
       - PLAYWRIGHT_CHROME=true
       - PLAYWRIGHT_DRIVER_URL=ws://playwright-chrome:3000
-      - MAX_CONCURRENT_CHECKS=1
+      - MAX_CONCURRENT_CHECKS=3
+      - FETCH_WORKERS=2
     ports:
       - "5000:5000"
     restart: unless-stopped
@@ -28,7 +29,7 @@ services:
       - SCREEN_WIDTH=1920
       - SCREEN_HEIGHT=1024
       - SCREEN_DEPTH=16
-      - MAX_CONCURRENT_CHROME_PROCESSES=5
+      - MAX_CONCURRENT_CHROME_PROCESSES=3
 
   browser-chrome:
     hostname: browser-chrome
