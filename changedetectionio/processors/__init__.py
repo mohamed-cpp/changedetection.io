@@ -1,14 +1,14 @@
 from abc import abstractmethod
+from changedetectionio.content_fetchers.base import Fetcher
 from changedetectionio.strtobool import strtobool
-
 from copy import deepcopy
 from loguru import logger
 import hashlib
-import os
-import re
 import importlib
-import pkgutil
 import inspect
+import os
+import pkgutil
+import re
 
 class difference_detection_processor():
 
@@ -18,14 +18,19 @@ class difference_detection_processor():
     screenshot = None
     watch = None
     xpath_data = None
+    preferred_proxy = None
 
     def __init__(self, *args, datastore, watch_uuid, **kwargs):
         super().__init__(*args, **kwargs)
         self.datastore = datastore
         self.watch = deepcopy(self.datastore.data['watching'].get(watch_uuid))
+        # Generic fetcher that should be extended (requests, playwright etc)
+        self.fetcher = Fetcher()
 
-    def call_browser(self):
+    def call_browser(self, preferred_proxy_id=None):
+
         from requests.structures import CaseInsensitiveDict
+
         # Protect against file:// access
         if re.search(r'^file://', self.watch.get('url', '').strip(), re.IGNORECASE):
             if not strtobool(os.getenv('ALLOW_FILE_URI', 'false')):
@@ -39,7 +44,7 @@ class difference_detection_processor():
         prefer_fetch_backend = self.watch.get('fetch_backend', 'system')
 
         # Proxy ID "key"
-        preferred_proxy_id = self.datastore.get_preferred_proxy_for_watch(uuid=self.watch.get('uuid'))
+        preferred_proxy_id = preferred_proxy_id if preferred_proxy_id else self.datastore.get_preferred_proxy_for_watch(uuid=self.watch.get('uuid'))
 
         # Pluggable content self.fetcher
         if not prefer_fetch_backend or prefer_fetch_backend == 'system':
@@ -133,8 +138,18 @@ class difference_detection_processor():
         is_binary = self.watch.is_pdf
 
         # And here we go! call the right browser with browser-specific settings
-        self.fetcher.run(url, timeout, request_headers, request_body, request_method, ignore_status_codes, self.watch.get('include_filters'),
-                    is_binary=is_binary)
+        empty_pages_are_a_change = self.datastore.data['settings']['application'].get('empty_pages_are_a_change', False)
+
+        self.fetcher.run(url=url,
+                         timeout=timeout,
+                         request_headers=request_headers,
+                         request_body=request_body,
+                         request_method=request_method,
+                         ignore_status_codes=ignore_status_codes,
+                         current_include_filters=self.watch.get('include_filters'),
+                         is_binary=is_binary,
+                         empty_pages_are_a_change=empty_pages_are_a_change
+                         )
 
         #@todo .quit here could go on close object, so we can run JS if change-detected
         self.fetcher.quit()
@@ -142,7 +157,7 @@ class difference_detection_processor():
         # After init, call run_changedetection() which will do the actual change-detection
 
     @abstractmethod
-    def run_changedetection(self, watch, skip_when_checksum_same=True):
+    def run_changedetection(self, watch):
         update_obj = {'last_notification_error': False, 'last_error': False}
         some_data = 'xxxxx'
         update_obj["previous_md5"] = hashlib.md5(some_data.encode('utf-8')).hexdigest()

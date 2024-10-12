@@ -75,6 +75,7 @@ function isItemInStock() {
         'vergriffen',
         'vorbestellen',
         'vorbestellung ist bald möglich',
+        'we don\'t currently have any',
         'we couldn\'t find any products that match',
         'we do not currently have an estimate of when this product will be back in stock.',
         'we don\'t know when or if this item will be back in stock.',
@@ -153,10 +154,14 @@ function isItemInStock() {
         }
 
         elementText = "";
-        if (element.tagName.toLowerCase() === "input") {
-            elementText = element.value.toLowerCase().trim();
-        } else {
-            elementText = getElementBaseText(element);
+        try {
+            if (element.tagName.toLowerCase() === "input") {
+                elementText = element.value.toLowerCase().trim();
+            } else {
+                elementText = getElementBaseText(element);
+            }
+        } catch (e) {
+            console.warn('stock-not-in-stock.js scraper - handling element for gettext failed', e);
         }
 
         if (elementText.length) {
@@ -173,7 +178,8 @@ function isItemInStock() {
         const element = elementsToScan[i];
         // outside the 'fold' or some weird text in the heading area
         // .getBoundingClientRect() was causing a crash in chrome 119, can only be run on contentVisibility != hidden
-        if (element.getBoundingClientRect().top + window.scrollY >= vh + 150 || element.getBoundingClientRect().top + window.scrollY <= 100) {
+        // Note: theres also an automated test that places the 'out of stock' text fairly low down
+        if (element.getBoundingClientRect().top + window.scrollY >= vh + 250 || element.getBoundingClientRect().top + window.scrollY <= 100) {
             continue
         }
         elementText = "";
@@ -187,7 +193,7 @@ function isItemInStock() {
             // and these mean its out of stock
             for (const outOfStockText of outOfStockTexts) {
                 if (elementText.includes(outOfStockText)) {
-                    console.log(`Selected 'Out of Stock' - found text "${outOfStockText}" - "${elementText}"`)
+                    console.log(`Selected 'Out of Stock' - found text "${outOfStockText}" - "${elementText}" - offset top ${element.getBoundingClientRect().top}, page height is ${vh}`)
                     return outOfStockText; // item is out of stock
                 }
             }

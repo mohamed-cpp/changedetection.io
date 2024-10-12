@@ -5,7 +5,7 @@ import time
 from flask import url_for
 
 from ..html_tools import *
-from .util import live_server_setup
+from .util import live_server_setup, wait_for_all_checks
 
 
 def test_setup(live_server):
@@ -87,6 +87,9 @@ def test_element_removal_output():
      Some initial text<br>
      <p>across multiple lines</p>
      <div id="changetext">Some text that changes</div>
+     <div>Some text should be matched by xPath // selector</div>
+     <div>Some text should be matched by xPath selector</div>
+     <div>Some text should be matched by xPath1 selector</div>
      </body>
     <footer>
     <p>Footer</p>
@@ -94,7 +97,16 @@ def test_element_removal_output():
      </html>
     """
     html_blob = element_removal(
-        ["header", "footer", "nav", "#changetext"], html_content=content
+      [
+        "header",
+        "footer",
+        "nav",
+        "#changetext",
+        "//*[contains(text(), 'xPath // selector')]",
+        "xpath://*[contains(text(), 'xPath selector')]",
+        "xpath1://*[contains(text(), 'xPath1 selector')]"
+      ],
+      html_content=content
     )
     text = get_text(html_blob)
     assert (
@@ -107,12 +119,10 @@ across multiple lines
 
 
 def test_element_removal_full(client, live_server, measure_memory_usage):
-    sleep_time_for_fetch_thread = 3
+    #live_server_setup(live_server)
 
     set_original_response()
 
-    # Give the endpoint time to spin up
-    time.sleep(1)
 
     # Add our URL to the import page
     test_url = url_for("test_endpoint", _external=True)
@@ -120,7 +130,8 @@ def test_element_removal_full(client, live_server, measure_memory_usage):
         url_for("import_page"), data={"urls": test_url}, follow_redirects=True
     )
     assert b"1 Imported" in res.data
-    time.sleep(1)
+    wait_for_all_checks(client)
+
     # Goto the edit page, add the filter data
     # Not sure why \r needs to be added - absent of the #changetext this is not necessary
     subtractive_selectors_data = "header\r\nfooter\r\nnav\r\n#changetext"
@@ -136,6 +147,7 @@ def test_element_removal_full(client, live_server, measure_memory_usage):
         follow_redirects=True,
     )
     assert b"Updated watch." in res.data
+    wait_for_all_checks(client)
 
     # Check it saved
     res = client.get(
@@ -144,10 +156,10 @@ def test_element_removal_full(client, live_server, measure_memory_usage):
     assert bytes(subtractive_selectors_data.encode("utf-8")) in res.data
 
     # Trigger a check
-    client.get(url_for("form_watch_checknow"), follow_redirects=True)
+    res = client.get(url_for("form_watch_checknow"), follow_redirects=True)
+    assert b'1 watches queued for rechecking.' in res.data
 
-    # Give the thread time to pick it up
-    time.sleep(sleep_time_for_fetch_thread)
+    wait_for_all_checks(client)
 
     # so that we set the state to 'unviewed' after all the edits
     client.get(url_for("diff_history_page", uuid="first"))
@@ -156,10 +168,11 @@ def test_element_removal_full(client, live_server, measure_memory_usage):
     set_modified_response()
 
     # Trigger a check
-    client.get(url_for("form_watch_checknow"), follow_redirects=True)
+    res = client.get(url_for("form_watch_checknow"), follow_redirects=True)
+    assert b'1 watches queued for rechecking.' in res.data
 
     # Give the thread time to pick it up
-    time.sleep(sleep_time_for_fetch_thread)
+    wait_for_all_checks(client)
 
     # There should not be an unviewed change, as changes should be removed
     res = client.get(url_for("index"))
